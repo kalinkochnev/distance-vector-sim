@@ -30,7 +30,7 @@ Dx(y) = min_v { c(x, v) +                Dy(y)}
 
 typedef struct {
     unsigned int id;
-    int read_fds[N_NEIGHBORS];
+    int read_fd;
     int write_fds[N_NEIGHBORS];
     int cost[N_NEIGHBORS][N_NEIGHBORS]; // If entry is NULL, assume infinite weight
 } router_t;
@@ -38,25 +38,64 @@ typedef struct {
 // Print out the distance vector table
 void display_router(router_t * r) {
     // print header
-    printf("+--------+------+------+------+\n");
-    printf("| Router | 0    | 1    | 2    |\n");
-    printf("+--------+------+------+------+\n");
+    printf("+---------------+------+------+------+\n");
+    printf("| Router (id %d) | 0    | 1    | 2    |\n", r->id);
+    printf("+---------------+------+------+------+\n");
 
     // Print rows
     for (int row = 0; row < N_NEIGHBORS; row++) {
-        printf("|   %-4d | %-4d | %-4d | %-4d |\n", row, r->cost[row][0], r->cost[row][1], r->cost[row][2]);
+        printf("|   %-4d        |", row);
+
+        // Print columns
+        for (int col = 0; col < N_NEIGHBORS; col++) {
+            printf(" %-4d |", r->cost[row][col]);
+        }
+        printf("\n");
     }
-    printf("+--------+------+------+------+\n");
+    printf("+---------------+------+------+------+\n");
 }
 
-void test_main() {
-    router_t r;
-    r.id = 0;
+void init_weights(router_t * r) {
+    memset(r->cost, 0, sizeof(int) * N_NEIGHBORS * N_NEIGHBORS);
 
-    int cost[3][3] = {{0, 0, 0}, {1, 1, 1}, {2, 2, 2}};
-    memcpy(r.cost, cost, sizeof(cost));    
+    for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++) {
+        if (neighbor == r->id) {
+            r->cost[r->id][r->id] = 0;
+        } else {
+            r->cost[r->id][neighbor] = rand() / 100000000;
+        }
+    }
+}
 
-    display_router(&r);
+void initialize_routers() {
+    // For each router, pass the write ends of all the other routers
+    // Each router has only one read end
+    router_t routers[N_NEIGHBORS];
+    for (int r = 0; r < N_NEIGHBORS; r++) {
+        int r_fd[2];
+        pipe(r_fd);
+
+        // initialize fields
+        routers[r].id = r;
+        routers[r].read_fd = r_fd[FD_IN];
+        routers[r].write_fds[r] = -1; // you shouldn't access -1 FD!!!! WARNING this is just a filler value
+        init_weights(&routers[r]);
+
+        // give all neighbors the write end of the router's pipe (don't give it to yourself)
+        for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++) {
+            if (r == neighbor) { // don't assign write fd to itself
+                continue;
+            }
+
+            routers[neighbor].write_fds[r] = r_fd[FD_OUT];
+        }
+
+        display_router(&routers[r]);
+    }
+
+}
+void test_main() { 
+
 }
 
 int main() {
@@ -65,29 +104,28 @@ int main() {
     return 0;
 }
 
+void real_main(int argc, int **argv) {
+    int seed = 3100;
+    srand(seed);
 
-void real_main() {
     // 1. Parse the command line arguments for weights
-    // 2. Initialize 3 pipes and routers. Pass fds to each router
-    // int r1_fd[2]; = pipe();
-    // int r2_fd[2]; = pipe();
-    // int r3_fd[2]; = pipe();
 
-    router_t routers[N_NEIGHBORS];
-    for (int r = 0; r < N_NEIGHBORS; r++) {
-        // initialize each router struct and include fds to all the other routers
-    }
+    // 2. Initialize 3 pipes and routers. Pass fds to each router
+    initialize_routers();
+
+    
+
 
     // For each router, fork
-    int proc_pids[N_NEIGHBORS];
-    for (int r = 0; r < N_NEIGHBORS; r++) {
-        int pid = fork();
-        if (pid == 0) { // we are in child process
-            // router_main();
-            // exit process once done
-        }
-        proc_pids[r] = pid;
-    }
+    // int proc_pids[N_NEIGHBORS];
+    // for (int r = 0; r < N_NEIGHBORS; r++) {
+    //     int pid = fork();
+    //     if (pid == 0) { // we are in child process
+    //         // router_main();
+    //         // exit process once done
+    //     }
+    //     proc_pids[r] = pid;
+    // }
 
     // Close all the unnecessary pipes in main since only the routers use them
 
