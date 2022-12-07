@@ -26,7 +26,7 @@ Dx(y) = min_v { c(x, v) +                Dy(y)}
 #include <unistd.h>
 
 #define N_NEIGHBORS 3
-#define INFO_MSG_LEN 50
+#define MAX_INFO_LEN 50
 #define FD_IN 0
 #define FD_OUT 1
 
@@ -40,7 +40,7 @@ typedef struct {
 typedef struct {
     int sender_id;
     int neighbor_costs[N_NEIGHBORS];
-    char info[INFO_MSG_LEN];
+    char info[MAX_INFO_LEN];
 } router_msg;
 
 // Print out the distance vector table
@@ -76,6 +76,17 @@ void init_weights(router_t * r) {
     }
 }
 
+// This function closes all the file descriptors associated with this router
+void close_router(router_t * r) {
+    // Close the read end
+    close(r->read_fd);
+
+    // Close all the write file descriptors
+    for (int i = 0; i < N_NEIGHBORS; i++) {
+        close(r->write_fds[i]);
+    }
+}
+
 void initialize_routers(router_t * routers) {
     // For each router, pass the write ends of all the other routers
     // Each router has only one read end
@@ -93,7 +104,7 @@ void initialize_routers(router_t * routers) {
             routers[neighbor].write_fds[r] = r_fd[FD_OUT]; // TODO do I need to use dup()?
         }
 
-        // display_router(&routers[r]);
+        display_router(&routers[r]);
     }
 }
 
@@ -116,7 +127,7 @@ void notify_neighbors(router_t * r) {
             // Send the neighbors distance vectors to the other neighbors
             router_msg msg;
             msg.sender_id = r->id;
-            snprintf(msg.info, INFO_MSG_LEN, "sent from %d", r->id);
+            snprintf(msg.info, MAX_INFO_LEN, "sent from %d", r->id);
 
             int * r_neighbor_costs = r->cost[r->id];
             memcpy(msg.neighbor_costs, r_neighbor_costs, sizeof(int) * N_NEIGHBORS);
@@ -128,7 +139,11 @@ void notify_neighbors(router_t * r) {
 }
 
 // Apply Belman-Ford to recompute the best estimate for the distance vector 
-void recompute_est() {
+void recompute_est(router_t * r, router_msg * new_est) {
+    // Update the cost matrix with the new cost from the neighbor
+    memcpy(r->cost[new_est->sender_id], new_est->neighbor_costs,  sizeof(new_est->neighbor_costs));
+
+    // Apply the belman ford algorithm to find the new least cost path
 
 }
 
@@ -142,13 +157,15 @@ void wait_neighbors(router_t * t) {
 void router_main(router_t * r) {
     //Init
     notify_neighbors(r);
-
-    for (int n = 0; n < N_NEIGHBORS; n++) {
+    
+    for (int n = 0; n < N_NEIGHBORS - 1; n++) {
         router_msg neighbor_msg;
         // printf("%d waiting for msg of size: %ld\n", r->id, sizeof(neighbor_msg));
         read(r->read_fd, &neighbor_msg, sizeof(neighbor_msg));
-        printf("%d recieved from %d! : \"%s\"\n", r->id, neighbor_msg.sender_id, neighbor_msg.info);
+        // printf("%d recieved from %d! : \"%s\"\n", r->id, neighbor_msg.sender_id, neighbor_msg.info);
+        recompute_est(r, &neighbor_msg);
     }
+
     // 1. Wait for a message from a neighbor
     // wait_neighbors();
 
@@ -177,38 +194,42 @@ int main(int argc, char **argv) {
         int pid = fork();
 
         if (pid == 0) { // we are in child process
-        //     // close all the read ends of the other routers
-        //     for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++) {
-        //         if (neighbor != r) { // don't want to close router's own read end
-        //             close(routers[neighbor].read_fd);
-        //         }
-        //     }
-            printf("%d process was started!\n", r);
+            // close all the read ends of the other routers inside of process
+            for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++) {
+                if (neighbor != r) { // don't want to close router's own read end
+                    close(routers[neighbor].read_fd);
+                }
+            }
+            
+
+            // Start the router main program
+            printf("Router (%d) was started!\n", r);
             router_main(&routers[r]);
-            exit(0);
-        //     // exit process once done
+
+            // Clean up router file descriptors inside of process
+            close_router(&routers[r]);
+            exit(0); // exit once done
         }
         proc_pids[r] = pid;
     }
 
-    // Close all the unnecessary pipes in main since only the routers use them
-    // for (int r = 0; r < N_NEIGHBORS; r++) {
-    //     // close the read end for each router
-    //     close(routers[r].read_fd);
-    // }
+    // close the read end for each router
+    for (int r = 0; r < N_NEIGHBORS; r++) {
+        close(routers[r].read_fd);
+    }
 
-    // // Close all the write ends from a single node (since it has references to all write ends including itself)
-    // for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++) {
-    //     close(routers[0].write_fds[neighbor]);
-    // }
+    // Close all the write ends from a single node (since it has references to all write ends including itself)
+    for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++) {
+        close(routers[0].write_fds[neighbor]);
+    }
     
 
     // // handle control c https://stackoverflow.com/questions/4217037/catch-ctrl-c-in-c
 
-    // // Wait for processes to finish
-    // for (int r = 0; r < N_NEIGHBORS; r++) {
-    //     waitpid(proc_pids[r], NULL, 0);
-    // }
+    // Wait for processes to finish
+    for (int r = 0; r < N_NEIGHBORS; r++) {
+        waitpid(proc_pids[r], NULL, 0);
+    }
 
     return 0;
 }
