@@ -1,3 +1,33 @@
+
+/* INSTRUCTIONS
+Use the below commands to run the algorithm. If you want to adjust the number of routers, modify the N_NEIGHBORS #define (warning not heavilty tested)
+Please enter the input nicely since I have not handled every possible input error.
+
+The program starts with randomly initialized weights (based on a seed)
+
+COMMANDS
+1. List router ids
+usage: lr
+> 0 1 2 3 4 5
+
+2. List weights of router
+usage: `lw <router id>`
+> 10 12 13
+
+3. Update weights of router
+usage: `update <router id> <w1> <w2> .... <wn>`
+
+4. Display router's current distance vector
+usage: `display <router id>`
+
+5. Messages exchanged since last update
+usage: `n_messages`
+> 10
+
+6. Exit
+usage: `exit`
+
+*/
 /* Guidelines
 - Initialize 3 different routers with different weights (use a random seed)
 - Implement the Distance Vector Algorithm
@@ -9,7 +39,7 @@ Notes:
 
 Dx(y) = cost of least cost path from x to y
 Let v be a neighbor
-For each node y 
+For each node y
 Dx(y) = min_v { c(x, v) +                Dy(y)}
                ^- cost x to some neighbor v    ^-- min cost v to y
 
@@ -24,73 +54,98 @@ Dx(y) = min_v { c(x, v) +                Dy(y)}
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <time.h>
+#include <poll.h>
 
-#define N_NEIGHBORS 3
-#define MAX_INFO_LEN 50
+#include "shell.c"
+#include "router.h"
+
+// #define MAX_INFO_LEN 50
 #define FD_IN 0
 #define FD_OUT 1
 
-typedef struct {
-    unsigned int id;
-    int read_fd;
-    int write_fds[N_NEIGHBORS];
-    int cost[N_NEIGHBORS][N_NEIGHBORS]; // If entry is NULL, assume infinite weight
-} router_t;
-
-typedef struct {
+typedef struct
+{
     int sender_id;
     int neighbor_costs[N_NEIGHBORS];
-    char info[MAX_INFO_LEN];
+    // char info[MAX_INFO_LEN];
 } router_msg;
 
+void table_divider() {
+    printf("+---------------+");
+    for (int i = 0; i < N_NEIGHBORS; i++) {
+        printf("------+");
+    }
+    printf("\n");
+}
 // Print out the distance vector table
-void display_router(router_t * r) {
+void display_router(router_t *r)
+{
     // print header
-    printf("+---------------+------+------+------+\n");
-    printf("| Router (id %d) | 0    | 1    | 2    |\n", r->id);
-    printf("+---------------+------+------+------+\n");
+    table_divider();
+    printf("| Router (id %d) |", r->id);
+    for (int i = 0; i < N_NEIGHBORS; i++) {
+        printf(" %d    |", i);
+    }
+    printf("\n");
+    table_divider();
 
     // Print rows
-    for (int row = 0; row < N_NEIGHBORS; row++) {
+    for (int row = 0; row < N_NEIGHBORS; row++)
+    {
         printf("|   %-4d        |", row);
 
         // Print columns
-        for (int col = 0; col < N_NEIGHBORS; col++) {
+        for (int col = 0; col < N_NEIGHBORS; col++)
+        {
             printf(" %-4d |", r->cost[row][col]);
         }
         printf("\n");
     }
-    printf("+---------------+------+------+------+\n");
+    table_divider();
 }
 
 // This randomly assigns costs for a particular router to its neighbors
-void init_weights(router_t * r) {
-    memset(r->cost, 0, sizeof(int) * N_NEIGHBORS * N_NEIGHBORS);
+void init_weights(router_t *r)
+{
+    for (int i = 0; i < N_NEIGHBORS; i++) {
+        for (int j = 0; j < N_NEIGHBORS; j++) {
+            r->cost[i][j] = 9999;
+        }
+    }
 
-    for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++) {
-        if (neighbor == r->id) {
-            r->cost[r->id][r->id] = __INT_MAX__;
-        } else {
-            r->cost[r->id][neighbor] = rand() / 100000000;
+    for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
+    {
+        if (neighbor == r->id)
+        {
+            r->cost[r->id][r->id] = 0;
+        }
+        else
+        {
+            r->cost[r->id][neighbor] = rand() / 100000000 + 1;
         }
     }
 }
 
 // This function closes all the file descriptors associated with this router
-void close_router(router_t * r) {
+void close_router(router_t *r)
+{
     // Close the read end
     close(r->read_fd);
 
     // Close all the write file descriptors
-    for (int i = 0; i < N_NEIGHBORS; i++) {
+    for (int i = 0; i < N_NEIGHBORS; i++)
+    {
         close(r->write_fds[i]);
     }
 }
 
-void initialize_routers(router_t * routers) {
+void initialize_routers(router_t *routers)
+{
     // For each router, pass the write ends of all the other routers
     // Each router has only one read end
-    for (int r = 0; r < N_NEIGHBORS; r++) {
+    for (int r = 0; r < N_NEIGHBORS; r++)
+    {
         int r_fd[2];
         pipe(r_fd);
 
@@ -100,7 +155,8 @@ void initialize_routers(router_t * routers) {
         init_weights(&routers[r]);
 
         // give all neighbors the write end of the router's pipe (don't give it to yourself)
-        for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++) {
+        for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
+        {
             routers[neighbor].write_fds[r] = r_fd[FD_OUT]; // TODO do I need to use dup()?
         }
 
@@ -108,28 +164,27 @@ void initialize_routers(router_t * routers) {
     }
 }
 
-
-
-
-
-int send_data(router_t * from_r, int to_id, const void * buf, size_t bytes) {
+int send_data(router_t *from_r, int to_id, const void *buf, size_t bytes)
+{
     // If the same router, throw an error
     assert(from_r->id != to_id);
     return write(from_r->write_fds[to_id], buf, bytes);
 }
 
-
-
-void notify_neighbors(router_t * r) {
+void notify_neighbors(router_t *r)
+{
     // notify all router neighbors
-    for (int n = 0; n < N_NEIGHBORS; n++) {
-        if (n != r->id) { // Don't want to notify itself
+    for (int n = 0; n < N_NEIGHBORS; n++)
+    {
+        if (n != r->id)
+        { // Don't want to notify itself
             // Send the neighbors distance vectors to the other neighbors
             router_msg msg;
             msg.sender_id = r->id;
-            snprintf(msg.info, MAX_INFO_LEN, "sent from %d", r->id);
+            // snprintf(msg.info, MAX_INFO_LEN, "sent from %d", r->id);
 
-            int * r_neighbor_costs = r->cost[r->id];
+            // Only send r's cost to its neighbors, not whole vector
+            int *r_neighbor_costs = r->cost[r->id];
             memcpy(msg.neighbor_costs, r_neighbor_costs, sizeof(int) * N_NEIGHBORS);
 
             send_data(r, n, &msg, sizeof(msg));
@@ -138,47 +193,79 @@ void notify_neighbors(router_t * r) {
     }
 }
 
-// Apply Belman-Ford to recompute the best estimate for the distance vector 
-void recompute_est(router_t * r, router_msg * new_est) {
+// Apply Belman-Ford to recompute the best estimate for the least cost path
+// Returns 1 if an update was made
+int recompute_est(router_t *r, router_msg *new_est)
+{
     // Update the cost matrix with the new cost from the neighbor
-    memcpy(r->cost[new_est->sender_id], new_est->neighbor_costs,  sizeof(new_est->neighbor_costs));
+    memcpy(r->cost[new_est->sender_id], new_est->neighbor_costs, sizeof(new_est->neighbor_costs));
 
-    // Apply the belman ford algorithm to find the new least cost path
+    // Compute the distance vector Dx(y) = min { C(x, v) + Dv(y)} for every neighbor (y) for a router (x).
+    // C(x, v) represents cost from x to intermediary node v
+    // Find the minimum cost and update the distance vector with the new weight
 
+    // Start node is assumed to be current router
+    int updated = 0;
+    for (int end_node = 0; end_node < N_NEIGHBORS; end_node++)
+    {
+        int min_end_cost = r->cost[r->id][end_node];
+
+        for (int n = 0; n < N_NEIGHBORS; n++)
+        {
+            int cost_rn = r->cost[r->id][n];          // cost from r to neighbor
+            int cost_n_to_end = r->cost[n][end_node]; // cost from neighbor to
+
+            if (cost_rn + cost_n_to_end < min_end_cost)
+            {
+                min_end_cost = cost_rn + cost_n_to_end;
+                updated = 1;
+            }
+        }
+
+        // Update the cost vector with the new shortest path
+        r->cost[r->id][end_node] = min_end_cost;
+    }
+    return updated;
 }
 
-// TODO research ways to wait for any data from multiple file descriptors (select() or poll()??)
-void wait_neighbors(router_t * t) {
-    router_msg msg;
-    read(t->read_fd, &msg, sizeof(msg));
-}
-
-
-void router_main(router_t * r) {
-    //Init
-    notify_neighbors(r);
-    
-    for (int n = 0; n < N_NEIGHBORS - 1; n++) {
+void router_main(router_t *r)
+{
+    int start_time = time(NULL);
+    notify_neighbors(r); // start by notifying everyone initially
+    //time(NULL) - start_time < 5
+    while (1)
+    {
+        // Check if there is something available to read
+        
         router_msg neighbor_msg;
         // printf("%d waiting for msg of size: %ld\n", r->id, sizeof(neighbor_msg));
-        read(r->read_fd, &neighbor_msg, sizeof(neighbor_msg));
-        // printf("%d recieved from %d! : \"%s\"\n", r->id, neighbor_msg.sender_id, neighbor_msg.info);
-        recompute_est(r, &neighbor_msg);
+        if (read(r->read_fd, &neighbor_msg, sizeof(neighbor_msg)) < 0) {
+            break;
+        }
+
+        // Recompute the shortest path and notify neighbors of changes if any were made
+        if (recompute_est(r, &neighbor_msg) == 1)
+        { // And update was made
+            printf("id: %d update made!\n", r->id);
+            notify_neighbors(r);
+        } else {
+            // notify neighbors every 0.25 seconds
+            usleep(10000);
+            notify_neighbors(r);
+        }
+
     }
-
-    // 1. Wait for a message from a neighbor
-    // wait_neighbors();
-
-    // 2. Recompute the estimate
-    // recompute_est();
-    
-    // 3. If a change was made, notify neighbors of the change
-    // notify_neighbors(t);
+    if (r->id == 1) {
+        display_router(r);
+    }
+    printf("done!\n");
+    return;
 
     // Clean up write and read file descriptors
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     int seed = 3100;
     srand(seed);
 
@@ -187,20 +274,24 @@ int main(int argc, char **argv) {
     // 2. Initialize 3 pipes and routers. Pass fds to each router
     router_t routers[N_NEIGHBORS];
     initialize_routers(routers);
+    printf("Initializing routers................\n");
 
     // For each router, fork
     int proc_pids[N_NEIGHBORS];
-    for (int r = 0; r < N_NEIGHBORS; r++) {
+    for (int r = 0; r < N_NEIGHBORS; r++)
+    {
         int pid = fork();
 
-        if (pid == 0) { // we are in child process
+        if (pid == 0)
+        { // we are in child process
             // close all the read ends of the other routers inside of process
-            for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++) {
-                if (neighbor != r) { // don't want to close router's own read end
+            for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
+            {
+                if (neighbor != r)
+                { // don't want to close router's own read end
                     close(routers[neighbor].read_fd);
                 }
             }
-            
 
             // Start the router main program
             printf("Router (%d) was started!\n", r);
@@ -214,23 +305,27 @@ int main(int argc, char **argv) {
     }
 
     // close the read end for each router
-    for (int r = 0; r < N_NEIGHBORS; r++) {
+    for (int r = 0; r < N_NEIGHBORS; r++)
+    {
         close(routers[r].read_fd);
     }
 
     // Close all the write ends from a single node (since it has references to all write ends including itself)
-    for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++) {
+    for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
+    {
         close(routers[0].write_fds[neighbor]);
     }
-    
 
     // // handle control c https://stackoverflow.com/questions/4217037/catch-ctrl-c-in-c
 
-    // Wait for processes to finish
-    for (int r = 0; r < N_NEIGHBORS; r++) {
-        waitpid(proc_pids[r], NULL, 0);
-    }
+    sleep(1);
+    handle_input(routers, N_NEIGHBORS);
+
+    // // Wait for processes to finish
+    // for (int r = 0; r < N_NEIGHBORS; r++)
+    // {
+    //     waitpid(proc_pids[r], NULL, 0);
+    // }
 
     return 0;
 }
-
