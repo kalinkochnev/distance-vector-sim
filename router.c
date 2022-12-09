@@ -82,7 +82,9 @@ void close_router(router_t *r)
     // Close all the write descriptors to other routers
     for (int i = 0; i < N_NEIGHBORS; i++)
     {
-        close(r->r_writefds[i]);
+        if (i != r->id) { // router doesn't have file descriptor to itself
+            close(r->r_writefds[i]);
+        }
     }
 
     // Close file descriptors involving talking to main

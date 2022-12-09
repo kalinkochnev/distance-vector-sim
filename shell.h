@@ -41,4 +41,14 @@ typedef struct
     int args[MAX_ARGS];
 } main2r_msg;
 
+main2r_msg new_main2r(cmd_enum command) {
+    // Initialize arguments all to 0
+    main2r_msg msg;
+    for (int arg = 0; arg < MAX_ARGS; arg++) {
+        msg.args[arg] = 0;
+    }
+
+    msg.command = command;
+    return msg;
+}
 #endif

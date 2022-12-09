@@ -31,35 +31,7 @@ Dx(y) = min_v { c(x, v) +                Dy(y)}
 #include "shell.h"
 #include "router.h"
 
-// This randomly assigns costs for a particular router to its neighbors
 
-void clean_main_router_fds(router_t *routers)
-{
-    // Close the descriptors related to router-to-router communication
-    // close the read end for each router
-    for (int r = 0; r < N_NEIGHBORS; r++)
-    {
-        close(routers[r].r_readfd);
-    }
-
-    // Close all the write ends from a single node (since it has references to all write ends including itself)
-    for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
-    {
-        close(routers[0].r_writefds[neighbor]);
-    }
-
-    // The follow descriptors that are closed are related to communication from the processes to the main function (for shell purposes)
-    // We don't need
-}
-
-// shell_comm * initialize_routers(router_t *routers)
-// {
-
-//     
-
-//     // INITIALIZE THE ROUTER TO MAIN COMMUNICATION FOR THE SHELL (2 way)
-
-// }
 
 int send_data(router_t *from_r, int to_id, const void *buf, size_t bytes)
 {
@@ -73,8 +45,7 @@ void notify_neighbors(router_t *r)
     // notify all router neighbors
     for (int n = 0; n < N_NEIGHBORS; n++)
     {
-        if (n != r->id)
-        { // Don't want to notify itself
+        if (n != r->id) {// Don't want to notify itself (for many reasons, but partially bc it doesn't have a file descriptor)
             // Send the neighbors distance vectors to the other neighbors
             r2r_msg msg;
             msg.sender_id = r->id;
@@ -177,7 +148,10 @@ void router_main(router_t *r)
 
         if (fd_ready(r->r_readfd) == 1)
         {
-            read(r->r_readfd, &neighbor_msg, sizeof(neighbor_msg));
+            if (read(r->r_readfd, &neighbor_msg, sizeof(neighbor_msg)) < 0) {
+                printf("Error in reading from routers\n");
+                exit(0);
+            }
         }
         else
         {
@@ -250,8 +224,15 @@ int start_simulation(shell_state *shell)
         if (pid == 0) // we are in child process
         {
             // Close unused file descriptors for talking to shell
-            close(shell->routers_writefd[r]);
             close(shell->routers_readfd); // process doesn't need to read shell's stuff
+            close(shell->routers_writefd[r]); // TODO valgrind doesn't like me getting rid of all the file descriptors for some reason...
+
+            // close all other read fds present for routers
+            for (int n = 0; n < N_NEIGHBORS; n++) {
+                if (n != shell->routers[r].id) {
+                    close(shell->routers[n].r_readfd);
+                }
+            }
 
             printf("Router (%d) was started!\n", r);
             router_main(&shell->routers[r]); // this loops forever until told by the shell to stop
@@ -262,12 +243,12 @@ int start_simulation(shell_state *shell)
         close(routers[r].shell_readfd);
 
         // Close unused file descriptors for talking from router to router
-        close(routers[r].r_readfd); // other routers don't need to read this one's messages
+        // close(routers[r].r_readfd); // other routers don't need to read this one's messages
         
         shell->process_pids[r] = pid;
     }
     // we close all unused write descriptors for routers writing to one another
-    for (int n = 0; n < N_NEIGHBORS; n++) {
+    for (int n = 1; n < N_NEIGHBORS; n++) { // there is no descriptor for n=0 r=0
         close(routers[0].r_writefds[n]);
     }
 

@@ -5,33 +5,6 @@
 #include "commands.c"
 #include "dist_vec.c"
 
-typedef struct
-{
-    int router_writes[N_NEIGHBORS];
-    int read_from_routers;
-} shell_comm;
-
-// This initializes the pipes between the routers and main
-// shell_comm * init_shell_fds() {
-//     // All routers
-//     // - write to same FD provided by main
-//     // - read from individual fds
-
-//     int main2router[2];
-//     pipe(main2router); // TODO need to make sure to close the read end after the processes are created
-//     shell_comm shell;
-//     shell.read_from_routers = main2router[FD_IN]; // need to read data from each router
-
-//     for (int r = 0; r < N_NEIGHBORS; r++) {
-//         int router2main[2]; // this is for reading from the main processes
-//         pipe(router2main);
-
-//         shell.router_writes[r] = router2main[FD_OUT];
-//         routers[r].from_main_read = router2main[FD_IN];
-//         routers[r].to_main_write = main2router[FD_OUT];
-//     }
-// }
-
 // Closes all file descriptors used for talking to the processes
 void close_shell_fds(shell_state * shell) {
     close(shell->routers_readfd);
@@ -102,7 +75,7 @@ void match_cmd(shell_state *shell, char *cmd, char arguments[MAX_ARGS][MAX_ARG_L
             // Wait for processes to exit
             printf("Waiting for processes to exit...\n");
             exit_processes(shell, arguments, n_args);
-            
+
             for (int r = 0; r < N_NEIGHBORS; r++) {
                 waitpid(shell->process_pids[r], NULL, 0);
             }

@@ -56,8 +56,7 @@ void display_router_cmd(shell_state *shell, char arguments[MAX_ARGS][MAX_ARG_LEN
         if (shell->sim_active == 0) {
             display_router(r);
         } else {
-            main2r_msg msg;
-            msg.command = DISPLAY;
+            main2r_msg msg = new_main2r(DISPLAY);
             write(shell->routers_writefd[r->id], &msg, sizeof(msg));
             wait_print();
         }
@@ -78,7 +77,7 @@ void list_weights_cmd(shell_state *shell, char arguments[MAX_ARGS][MAX_ARG_LEN],
         if (shell->sim_active == 0) {
             print_weights(r);
         } else {
-            main2r_msg msg;
+            main2r_msg msg = new_main2r(LIST_WEIGHTS);
             msg.command = LIST_WEIGHTS;
             write(shell->routers_writefd[r->id], &msg, sizeof(msg));
             wait_print();
@@ -121,8 +120,7 @@ void exit_processes(shell_state *shell, char arguments[MAX_ARGS][MAX_ARG_LEN], i
         return;
     }
 
-    main2r_msg msg;
-    msg.command = EXIT;
+    main2r_msg msg = new_main2r(EXIT);
     for (int r = 0; r < N_NEIGHBORS; r++) {
         write(shell->routers_writefd[r], &msg, sizeof(msg));
     }
