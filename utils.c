@@ -48,3 +48,10 @@ str2int_errno str2int(int *out, char *s, int base) {
     *out = l;
     return STR2INT_SUCCESS;
 }
+
+
+void remove_newline(char * str) {
+    char *pch = strstr(str, "\n");
+    if(pch != NULL)
+        strncpy(pch, "\0", 1);
+}

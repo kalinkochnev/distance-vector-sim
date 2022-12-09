@@ -3,7 +3,7 @@
 
 #define INPUT_SIZE 200
 #define MAX_CMD_LEN 10
-#define MAX_ARGS N_NEIGHBORS
+#define MAX_ARGS N_NEIGHBORS+1
 #define MAX_ARG_LEN 10 // max arg of 4 characters in length
 
 #include "router.h"

@@ -24,3 +24,37 @@ void init_weights(router_t *r)
         }
     }
 }
+
+void table_divider() {
+    printf("+---------------+");
+    for (int i = 0; i < N_NEIGHBORS; i++) {
+        printf("------+");
+    }
+    printf("\n");
+}
+// Print out the distance vector table
+void display_router(router_t *r)
+{
+    // print header
+    table_divider();
+    printf("| Router (id %d) |", r->id);
+    for (int i = 0; i < N_NEIGHBORS; i++) {
+        printf(" %d    |", i);
+    }
+    printf("\n");
+    table_divider();
+
+    // Print rows
+    for (int row = 0; row < N_NEIGHBORS; row++)
+    {
+        printf("|   %-4d        |", row);
+
+        // Print columns
+        for (int col = 0; col < N_NEIGHBORS; col++)
+        {
+            printf(" %-4d |", r->cost[row][col]);
+        }
+        printf("\n");
+    }
+    table_divider();
+}
