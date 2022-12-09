@@ -2,6 +2,7 @@
 #define ROUTER_H_
 
 #define N_NEIGHBORS 5
+#define MAX_WEIGHT 9999
 #define FD_IN 0
 #define FD_OUT 1
 

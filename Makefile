@@ -1,4 +1,4 @@
-TARGETS=dist_vec
+TARGETS=shell
 SRCS=$(patsubst %,%.c,$(TARGETS))
 CC=gcc
 CFLAGS= -Wall -g -pthread -std=gnu99

@@ -66,11 +66,8 @@ Dx(y) = min_v { c(x, v) +                Dy(y)}
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "shell.c"
+#include "shell.h"
 #include "router.h"
-
-// #define MAX_INFO_LEN 50
-
 
 
 void table_divider() {
@@ -108,26 +105,7 @@ void display_router(router_t *r)
 }
 
 // This randomly assigns costs for a particular router to its neighbors
-void init_weights(router_t *r)
-{
-    for (int i = 0; i < N_NEIGHBORS; i++) {
-        for (int j = 0; j < N_NEIGHBORS; j++) {
-            r->cost[i][j] = 9999;
-        }
-    }
 
-    for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
-    {
-        if (neighbor == r->id)
-        {
-            r->cost[r->id][r->id] = 0;
-        }
-        else
-        {
-            r->cost[r->id][neighbor] = rand() / 100000000 + 1;
-        }
-    }
-}
 
 // This function closes all the file descriptors associated with this router
 void close_router(router_t *r)
@@ -161,33 +139,34 @@ void clean_main_router_fds(router_t * routers) {
 }
 
 
-shell_comm * initialize_routers(router_t *routers)
-{
-    // INITIALIZE THE ROUTER TO ROUTER COMMUNICATION
-    // For each router, pass the write ends of all the other routers
-    // Each router has only one read end
-    for (int r = 0; r < N_NEIGHBORS; r++)
-    {
-        int r_fd[2];
-        pipe(r_fd);
+// shell_comm * initialize_routers(router_t *routers)
+// {
 
-        // initialize fields
-        routers[r].id = r;
-        routers[r].read_fd = r_fd[FD_IN];
-        init_weights(&routers[r]);
+//     // INITIALIZE THE ROUTER TO ROUTER COMMUNICATION
+//     // For each router, pass the write ends of all the other routers
+//     // Each router has only one read end
+//     for (int r = 0; r < N_NEIGHBORS; r++)
+//     {
+//         int r_fd[2];
+//         pipe(r_fd);
 
-        // give all neighbors the write end of the router's pipe (don't give it to yourself)
-        for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
-        {
-            routers[neighbor].write_fds[r] = r_fd[FD_OUT]; // TODO do I need to use dup()?
-        }
+//         // initialize fields
+//         routers[r].id = r;
+//         routers[r].read_fd = r_fd[FD_IN];
+//         init_weights(&routers[r]);
 
-        display_router(&routers[r]);
-    }
+//         // give all neighbors the write end of the router's pipe (don't give it to yourself)
+//         for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
+//         {
+//             routers[neighbor].write_fds[r] = r_fd[FD_OUT]; // TODO do I need to use dup()?
+//         }
 
-    // INITIALIZE THE ROUTER TO MAIN COMMUNICATION FOR THE SHELL (2 way)
+//         display_router(&routers[r]);
+//     }
+
+//     // INITIALIZE THE ROUTER TO MAIN COMMUNICATION FOR THE SHELL (2 way)
     
-}
+// }
 
 int send_data(router_t *from_r, int to_id, const void *buf, size_t bytes)
 {
@@ -289,7 +268,7 @@ void router_main(router_t *r)
     // Clean up write and read file descriptors
 }
 
-int main(int argc, char **argv)
+int start_simulation(shell_state * shell)
 {
     int seed = 3100;
     srand(seed);
@@ -297,9 +276,7 @@ int main(int argc, char **argv)
     // 1. Parse the command line arguments for weights
 
     // 2. Initialize 3 pipes and routers. Pass fds to each router
-    router_t routers[N_NEIGHBORS];
-    initialize_routers(routers);
-    printf("Initializing routers................\n");
+    printf("Initializing router processes................\n");
 
     // For each router, fork
     int proc_pids[N_NEIGHBORS];
@@ -314,29 +291,28 @@ int main(int argc, char **argv)
             {
                 if (neighbor != r)
                 { // don't want to close router's own read end
-                    close(routers[neighbor].read_fd);
+                    close(shell->routers[neighbor].read_fd);
                 }
             }
 
             // Start the router main program
             printf("Router (%d) was started!\n", r);
-            router_main(&routers[r]);
+            router_main(&shell->routers[r]);
 
             // Clean up router file descriptors inside of process
-            close_router(&routers[r]);
+            close_router(&shell->routers[r]);
             exit(0); // exit once done
         }
         proc_pids[r] = pid;
     }
 
     // this closes all the pipes set up between routers in the main function
-    clean_main_router_fds(routers);
+    // clean_main_router_fds(routers);
 
     // // handle control c https://stackoverflow.com/questions/4217037/catch-ctrl-c-in-c
 
     sleep(1);
     printf("Enter `help` for a list of commands\n");
-    handle_input(routers, N_NEIGHBORS);
     // // Wait for processes to finish
     // for (int r = 0; r < N_NEIGHBORS; r++)
     // {
