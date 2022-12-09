@@ -6,25 +6,31 @@ Please enter the input nicely since I have not handled every possible input erro
 The program starts with randomly initialized weights (based on a seed)
 
 COMMANDS
-1. List router ids
+1. List commands
+usage: `help`
+
+2. Start simulation (uses randomly initialized weights)
+usage: `start`
+
+3. List router ids
 usage: lr
 > 0 1 2 3 4 5
 
-2. List weights of router
+4. List weights of router
 usage: `lw <router id>`
 > 10 12 13
 
-3. Update weights of router
+5. Set weights of router
 usage: `update <router id> <w1> <w2> .... <wn>`
 
-4. Display router's current distance vector
+6. Display router's current distance vector
 usage: `display <router id>`
 
-5. Messages exchanged since last update
+7. Messages exchanged since last update
 usage: `n_messages`
 > 10
 
-6. Exit
+8. Exit
 usage: `exit`
 
 */
@@ -56,20 +62,16 @@ Dx(y) = min_v { c(x, v) +                Dy(y)}
 #include <unistd.h>
 #include <time.h>
 #include <poll.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "shell.c"
 #include "router.h"
 
 // #define MAX_INFO_LEN 50
-#define FD_IN 0
-#define FD_OUT 1
 
-typedef struct
-{
-    int sender_id;
-    int neighbor_costs[N_NEIGHBORS];
-    // char info[MAX_INFO_LEN];
-} router_msg;
+
 
 void table_divider() {
     printf("+---------------+");
@@ -140,8 +142,28 @@ void close_router(router_t *r)
     }
 }
 
-void initialize_routers(router_t *routers)
+void clean_main_router_fds(router_t * routers) {
+    // Close the descriptors related to router-to-router communication
+    // close the read end for each router
+    for (int r = 0; r < N_NEIGHBORS; r++)
+    {
+        close(routers[r].read_fd);
+    }
+
+    // Close all the write ends from a single node (since it has references to all write ends including itself)
+    for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
+    {
+        close(routers[0].write_fds[neighbor]);
+    }
+
+    // The follow descriptors that are closed are related to communication from the processes to the main function (for shell purposes)
+    // We don't need 
+}
+
+
+shell_comm * initialize_routers(router_t *routers)
 {
+    // INITIALIZE THE ROUTER TO ROUTER COMMUNICATION
     // For each router, pass the write ends of all the other routers
     // Each router has only one read end
     for (int r = 0; r < N_NEIGHBORS; r++)
@@ -162,6 +184,9 @@ void initialize_routers(router_t *routers)
 
         display_router(&routers[r]);
     }
+
+    // INITIALIZE THE ROUTER TO MAIN COMMUNICATION FOR THE SHELL (2 way)
+    
 }
 
 int send_data(router_t *from_r, int to_id, const void *buf, size_t bytes)
@@ -304,23 +329,14 @@ int main(int argc, char **argv)
         proc_pids[r] = pid;
     }
 
-    // close the read end for each router
-    for (int r = 0; r < N_NEIGHBORS; r++)
-    {
-        close(routers[r].read_fd);
-    }
-
-    // Close all the write ends from a single node (since it has references to all write ends including itself)
-    for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
-    {
-        close(routers[0].write_fds[neighbor]);
-    }
+    // this closes all the pipes set up between routers in the main function
+    clean_main_router_fds(routers);
 
     // // handle control c https://stackoverflow.com/questions/4217037/catch-ctrl-c-in-c
 
     sleep(1);
+    printf("Enter `help` for a list of commands\n");
     handle_input(routers, N_NEIGHBORS);
-
     // // Wait for processes to finish
     // for (int r = 0; r < N_NEIGHBORS; r++)
     // {

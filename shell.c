@@ -8,6 +8,42 @@
 #define INPUT_SIZE 200
 #define MAX_CMD_LEN 10
 
+typedef struct {
+    int router_writes[N_NEIGHBORS];
+    int read_from_routers;
+} shell_comm;
+
+// This initializes the pipes between the routers and main
+shell_comm * init_shell_fds() {
+    // All routers 
+    // - write to same FD provided by main
+    // - read from individual fds
+
+    int main2router[2];
+    pipe(main2router); // TODO need to make sure to close the read end after the processes are created
+    shell_comm shell;
+    shell.read_from_routers = main2router[FD_IN]; // need to read data from each router
+
+    for (int r = 0; r < N_NEIGHBORS; r++) {
+        int router2main[2]; // this is for reading from the main processes
+        pipe(router2main);
+
+        shell.router_writes[r] = router2main[FD_OUT];
+        routers[r].from_main_read = router2main[FD_IN];
+        routers[r].to_main_write = main2router[FD_OUT];
+    }
+}
+
+// This closes the unused fds in main
+void prune_shell_fds() {
+
+}
+
+// This function closes the remaining pipes
+void close_shell_fds() {
+
+}
+
 void remove_newline(char * str) {
     char *pch = strstr(str, "\n");
     if(pch != NULL)
