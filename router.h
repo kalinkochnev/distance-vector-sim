@@ -9,24 +9,18 @@
 typedef struct
 {
     unsigned int id;
-    int read_fd;
-    int write_fds[N_NEIGHBORS];
-    int cost[N_NEIGHBORS][N_NEIGHBORS]; // If entry is NULL, assume infinite weight
-    int from_main_read;
-    int to_main_write;
+    int r_readfd; // this is the file descriptor to read from other routers
+    int r_writefds[N_NEIGHBORS]; // these are the file descriptors to write to other routers
+    int cost[N_NEIGHBORS][N_NEIGHBORS];
+    int shell_readfd; // file descriptor to get data from main
+    int shell_writefd; // file descriptor to write data to main
 } router_t;
 
-// This struct contains the file descriptors for communicating with the main function for 
-typedef struct {
-    int read_fd;
-    int write_fd;
-} router_main_comm;
-
+// This struct is used for communication from router to router
 typedef struct
 {
     int sender_id;
     int neighbor_costs[N_NEIGHBORS];
-    // char info[MAX_INFO_LEN];
-} router_msg;
+} r2r_msg;
 
 #endif

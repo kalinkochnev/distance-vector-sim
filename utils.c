@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <poll.h>
 
 typedef enum {
     STR2INT_SUCCESS,
@@ -54,4 +55,17 @@ void remove_newline(char * str) {
     char *pch = strstr(str, "\n");
     if(pch != NULL)
         strncpy(pch, "\0", 1);
+}
+
+// Returns 1 if data is available on the file descriptor, 0 if not
+// Source https://stackoverflow.com/a/13811682
+int fd_ready(int fd) {
+    return poll(&(struct pollfd){ .fd = fd, .events = POLLIN }, 1, 100);
+}
+
+// This is used when we ask the process to print something
+// and there is some delay associated with that. This is so
+// things are printed nicely. Not really the best, but it works.
+void wait_print() {
+    usleep(100000);
 }

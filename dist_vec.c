@@ -1,39 +1,4 @@
 
-/* INSTRUCTIONS
-Use the below commands to run the algorithm. If you want to adjust the number of routers, modify the N_NEIGHBORS #define (warning not heavilty tested)
-Please enter the input nicely since I have not handled every possible input error.
-
-The program starts with randomly initialized weights (based on a seed)
-
-COMMANDS
-1. List commands
-usage: `help`
-
-2. Start simulation (uses randomly initialized weights)
-usage: `start`
-
-3. List router ids
-usage: lr
-> 0 1 2 3 4 5
-
-4. List weights of router
-usage: `lw <router id>`
-> 10 12 13
-
-5. Set weights of router
-usage: `update <router id> <w1> <w2> .... <wn>`
-
-6. Display router's current distance vector
-usage: `display <router id>`
-
-7. Messages exchanged since last update
-usage: `n_messages`
-> 10
-
-8. Exit
-usage: `exit`
-
-*/
 /* Guidelines
 - Initialize 3 different routers with different weights (use a random seed)
 - Implement the Distance Vector Algorithm
@@ -48,9 +13,6 @@ Let v be a neighbor
 For each node y
 Dx(y) = min_v { c(x, v) +                Dy(y)}
                ^- cost x to some neighbor v    ^-- min cost v to y
-
-
-
 */
 #include <error.h>
 #include <assert.h>
@@ -69,78 +31,41 @@ Dx(y) = min_v { c(x, v) +                Dy(y)}
 #include "shell.h"
 #include "router.h"
 
-
-
-
 // This randomly assigns costs for a particular router to its neighbors
 
-
-// This function closes all the file descriptors associated with this router
-void close_router(router_t *r)
+void clean_main_router_fds(router_t *routers)
 {
-    // Close the read end
-    close(r->read_fd);
-
-    // Close all the write file descriptors
-    for (int i = 0; i < N_NEIGHBORS; i++)
-    {
-        close(r->write_fds[i]);
-    }
-}
-
-void clean_main_router_fds(router_t * routers) {
     // Close the descriptors related to router-to-router communication
     // close the read end for each router
     for (int r = 0; r < N_NEIGHBORS; r++)
     {
-        close(routers[r].read_fd);
+        close(routers[r].r_readfd);
     }
 
     // Close all the write ends from a single node (since it has references to all write ends including itself)
     for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
     {
-        close(routers[0].write_fds[neighbor]);
+        close(routers[0].r_writefds[neighbor]);
     }
 
     // The follow descriptors that are closed are related to communication from the processes to the main function (for shell purposes)
-    // We don't need 
+    // We don't need
 }
-
 
 // shell_comm * initialize_routers(router_t *routers)
 // {
 
-//     // INITIALIZE THE ROUTER TO ROUTER COMMUNICATION
-//     // For each router, pass the write ends of all the other routers
-//     // Each router has only one read end
-//     for (int r = 0; r < N_NEIGHBORS; r++)
-//     {
-//         int r_fd[2];
-//         pipe(r_fd);
-
-//         // initialize fields
-//         routers[r].id = r;
-//         routers[r].read_fd = r_fd[FD_IN];
-//         init_weights(&routers[r]);
-
-//         // give all neighbors the write end of the router's pipe (don't give it to yourself)
-//         for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
-//         {
-//             routers[neighbor].write_fds[r] = r_fd[FD_OUT]; // TODO do I need to use dup()?
-//         }
-
-//         display_router(&routers[r]);
-//     }
+//     
 
 //     // INITIALIZE THE ROUTER TO MAIN COMMUNICATION FOR THE SHELL (2 way)
-    
+
 // }
 
 int send_data(router_t *from_r, int to_id, const void *buf, size_t bytes)
 {
     // If the same router, throw an error
     assert(from_r->id != to_id);
-    return write(from_r->write_fds[to_id], buf, bytes);
+    return write(from_r->r_writefds[to_id], buf, bytes);
 }
 
 void notify_neighbors(router_t *r)
@@ -151,7 +76,7 @@ void notify_neighbors(router_t *r)
         if (n != r->id)
         { // Don't want to notify itself
             // Send the neighbors distance vectors to the other neighbors
-            router_msg msg;
+            r2r_msg msg;
             msg.sender_id = r->id;
             // snprintf(msg.info, MAX_INFO_LEN, "sent from %d", r->id);
 
@@ -167,7 +92,7 @@ void notify_neighbors(router_t *r)
 
 // Apply Belman-Ford to recompute the best estimate for the least cost path
 // Returns 1 if an update was made
-int recompute_est(router_t *r, router_msg *new_est)
+int recompute_est(router_t *r, r2r_msg *new_est)
 {
     // Update the cost matrix with the new cost from the neighbor
     memcpy(r->cost[new_est->sender_id], new_est->neighbor_costs, sizeof(new_est->neighbor_costs));
@@ -200,19 +125,63 @@ int recompute_est(router_t *r, router_msg *new_est)
     return updated;
 }
 
+void process_user_command(router_t *r)
+{
+    main2r_msg msg;
+    if (read(r->shell_readfd, &msg, sizeof(main2r_msg)) > 0)
+    {
+        switch (msg.command)
+        {
+        case EXIT:
+            printf("Closing router %d\n", r->id);
+            close_router(r);
+            exit(0);
+            break;
+
+        case DISPLAY:
+            display_router(r);
+            break;
+
+        case UPDATE:
+            break;
+
+        case LIST_WEIGHTS:
+            print_weights(r);
+            break;
+        default:
+            break;
+        }
+    }
+    else
+    {
+        printf("An error has occurred in reading the message from main!\n");
+    }
+}
+
 void router_main(router_t *r)
 {
     int start_time = time(NULL);
     notify_neighbors(r); // start by notifying everyone initially
-    //time(NULL) - start_time < 5
+    // time(NULL) - start_time < 5
     while (1)
     {
-        // Check if there is something available to read
-        
-        router_msg neighbor_msg;
+        // Check if we have any messages from the main thread for commands to run
+        if (fd_ready(r->shell_readfd) == 1)
+        {
+            process_user_command(r);
+        }
+
+        // Check if we have messages from other routers
+        r2r_msg neighbor_msg;
         // printf("%d waiting for msg of size: %ld\n", r->id, sizeof(neighbor_msg));
-        if (read(r->read_fd, &neighbor_msg, sizeof(neighbor_msg)) < 0) {
-            break;
+
+        if (fd_ready(r->r_readfd) == 1)
+        {
+            read(r->r_readfd, &neighbor_msg, sizeof(neighbor_msg));
+        }
+        else
+        {
+            continue; // we're using a spinlock, which isn't great but not much else we can do since we don't want to block commands from main
         }
 
         // Recompute the shortest path and notify neighbors of changes if any were made
@@ -220,15 +189,13 @@ void router_main(router_t *r)
         { // And update was made
             printf("id: %d update made!\n", r->id);
             notify_neighbors(r);
-        } else {
+        }
+        else
+        {
             // notify neighbors every 0.25 seconds
             usleep(10000);
             notify_neighbors(r);
         }
-
-    }
-    if (r->id == 1) {
-        display_router(r);
     }
     printf("done!\n");
     return;
@@ -236,56 +203,73 @@ void router_main(router_t *r)
     // Clean up write and read file descriptors
 }
 
-int start_simulation(shell_state * shell)
+int start_simulation(shell_state *shell)
 {
-    int seed = 3100;
-    srand(seed);
+    router_t * routers = shell->routers;
 
-    // 1. Parse the command line arguments for weights
-
-    // 2. Initialize 3 pipes and routers. Pass fds to each router
     printf("Initializing router processes................\n");
+    shell->sim_active = 1;
 
-    // For each router, fork
-    int proc_pids[N_NEIGHBORS];
+    // Initialize shell to router file descriptors
+    int shell_fds[2];
+    pipe(shell_fds);
+    shell->routers_readfd = shell_fds[FD_IN];
+
+    // INITIALIZE THE ROUTER TO ROUTER COMMUNICATION
+    // For each router, pass the write ends of all the other routers
+    // Each router has only one read end
     for (int r = 0; r < N_NEIGHBORS; r++)
     {
-        int pid = fork();
+        int r_fd[2];
+        pipe(r_fd);
 
-        if (pid == 0)
-        { // we are in child process
-            // close all the read ends of the other routers inside of process
-            for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
-            {
-                if (neighbor != r)
-                { // don't want to close router's own read end
-                    close(shell->routers[neighbor].read_fd);
-                }
+        routers[r].r_readfd = r_fd[FD_IN];
+
+        // give all neighbors the write end of the router's pipe (don't give it to itself)
+        for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++)
+        {
+            if (neighbor != routers[r].id) {
+                routers[neighbor].r_writefds[r] = r_fd[FD_OUT]; 
             }
-
-            // Start the router main program
-            printf("Router (%d) was started!\n", r);
-            router_main(&shell->routers[r]);
-
-            // Clean up router file descriptors inside of process
-            close_router(&shell->routers[r]);
-            exit(0); // exit once done
         }
-        proc_pids[r] = pid;
     }
 
-    // this closes all the pipes set up between routers in the main function
-    // clean_main_router_fds(routers);
+    // For each router, fork
+    for (int r = 0; r < N_NEIGHBORS; r++)
+    {
+        // shell related file descriptors
+        int router_fds[2];
+        pipe(router_fds);
 
-    // // handle control c https://stackoverflow.com/questions/4217037/catch-ctrl-c-in-c
+        routers[r].shell_writefd = shell_fds[FD_OUT]; // router talking to the shell
+        routers[r].shell_readfd = router_fds[FD_IN]; // router getting messages from main
+        shell->routers_writefd[r] = router_fds[FD_OUT]; // shell talking to router
 
-    sleep(1);
-    printf("Enter `help` for a list of commands\n");
-    // // Wait for processes to finish
-    // for (int r = 0; r < N_NEIGHBORS; r++)
-    // {
-    //     waitpid(proc_pids[r], NULL, 0);
-    // }
+        int pid = fork();
+
+        if (pid == 0) // we are in child process
+        {
+            // Close unused file descriptors for talking to shell
+            close(shell->routers_writefd[r]);
+            close(shell->routers_readfd); // process doesn't need to read shell's stuff
+
+            printf("Router (%d) was started!\n", r);
+            router_main(&shell->routers[r]); // this loops forever until told by the shell to stop
+        }
+
+        // Close unused file descriptors for talking to shell (again in main)
+        close(routers[r].shell_writefd); // other routers don't need this router's talking to shell pipes
+        close(routers[r].shell_readfd);
+
+        // Close unused file descriptors for talking from router to router
+        close(routers[r].r_readfd); // other routers don't need to read this one's messages
+        
+        shell->process_pids[r] = pid;
+    }
+    // we close all unused write descriptors for routers writing to one another
+    for (int n = 0; n < N_NEIGHBORS; n++) {
+        close(routers[0].r_writefds[n]);
+    }
 
     return 0;
 }

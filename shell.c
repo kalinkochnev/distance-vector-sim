@@ -32,14 +32,12 @@ typedef struct
 //     }
 // }
 
-// This closes the unused fds in main
-void prune_shell_fds()
-{
-}
-
-// This function closes the remaining pipes
-void close_shell_fds()
-{
+// Closes all file descriptors used for talking to the processes
+void close_shell_fds(shell_state * shell) {
+    close(shell->routers_readfd);
+    for (int r = 0; r < N_NEIGHBORS; r++) {
+        close(shell->routers_writefd[r]);
+    }
 }
 
 // Takes the input string and attempts to match a command to it for additional handling
@@ -57,10 +55,11 @@ void match_cmd(shell_state *shell, char *cmd, char arguments[MAX_ARGS][MAX_ARG_L
         {
             shell->sim_active = 1;
             start_simulation(shell);
+            sleep(2);
         }
         else
         {
-            printf("Simulation is already active!");
+            printf("Simulation is already active!\n");
         }
     }
     else if (strcasecmp(cmd, "help") == 0)
@@ -77,14 +76,8 @@ void match_cmd(shell_state *shell, char *cmd, char arguments[MAX_ARGS][MAX_ARG_L
     }
     else if (strcasecmp(cmd, "lw") == 0)
     { // Handle list weights of router
-        if (shell->sim_active == 0)
-        { // If this sim isn't active, just update the structs
-            list_weights_no_sim(shell, arguments, n_args);
-        }
-        else
-        {
-            // TODO
-        }
+        list_weights_cmd(shell, arguments, n_args);
+        wait_print();
     }
     else if (strcasecmp(cmd, "update") == 0)
     { // Handle update of weights of router
@@ -97,14 +90,7 @@ void match_cmd(shell_state *shell, char *cmd, char arguments[MAX_ARGS][MAX_ARG_L
     }
     else if (strcasecmp(cmd, "display") == 0)
     { // Display distance vector of router
-        if (shell->sim_active == 0)
-        {
-            display_router_no_sim(shell, arguments, n_args);
-        }
-        else
-        {
-            // TODO
-        }
+        display_router_cmd(shell, arguments, n_args);
     }
     else if (strcasecmp(cmd, "n_messages") == 0)
     { // List the number of messages
@@ -112,7 +98,20 @@ void match_cmd(shell_state *shell, char *cmd, char arguments[MAX_ARGS][MAX_ARG_L
     }
     else if (strcasecmp(cmd, "exit") == 0)
     { // Exit the program
-        printf("Handled exit!\n");
+        if (shell->sim_active == 1) {
+            // Wait for processes to exit
+            printf("Waiting for processes to exit...\n");
+            exit_processes(shell, arguments, n_args);
+            
+            for (int r = 0; r < N_NEIGHBORS; r++) {
+                waitpid(shell->process_pids[r], NULL, 0);
+            }
+
+            // clean up shell file descriptors
+            close_shell_fds(shell);
+        }        
+        
+        printf("Finished!\n");
         exit(0);
     }
     else
@@ -159,12 +158,6 @@ void handle_input(shell_state *shell)
             pch = strtok(NULL, " ");
         }
 
-        //&& strlen(pch) < MAX_CMD_LEN
-        // remove_newline(pch);
-        // strncpy(cmd, pch, MAX_CMD_LEN);
-        // Parse the arguments into an array of integers
-
-        // match the command =
         match_cmd(shell, cmd, args, n_args);
     }
 }
@@ -189,6 +182,9 @@ int main(int argc, char **argv)
     shell_state shell;
     shell.n_exchanges = 0; // program starts with 0 exchanges
     shell.sim_active = 0;  // simulation is not active at start
+
+    int seed = 3100;
+    srand(seed);
 
     for (int r = 0; r < N_NEIGHBORS; r++)
     {
