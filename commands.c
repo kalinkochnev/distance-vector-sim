@@ -21,7 +21,17 @@ int get_router(shell_state * shell, router_t ** router, char * arg) {
 }
 
 void help() {
-    
+    // printf()
+    printf("# of routers: %d\n\n", N_NEIGHBORS);
+    printf("COMMANDS:\n");
+    printf("1. List commands\n   usage: `help`\n\n");
+    printf("2. Start simulation (uses randomly initialized weights)\n   usage: `start`\n\n");
+    printf("3. List router IDs\n   usage: `lr`\n\n");
+    printf("4. List weights/costs from router to its neighbors\n   usage: `lw <router id>`\n\n");
+    printf("5. Set weights/costs for a router\n   usage: `update <router id> <w1> <w2> ... <wn>`\n\n");
+    printf("6. Display router's current distance vector\n   usage: `display <router id>`\n\n");
+    printf("7. Display messages exchanged since last update\n   usage: `n_messages`\n\n");
+    printf("8. Exit\n   usage: `exit`\n\n");
 }
 
 void display_router_no_sim(shell_state * shell, char arguments[MAX_ARGS][MAX_ARG_LEN], int n_args) {

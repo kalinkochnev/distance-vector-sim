@@ -65,7 +65,7 @@ void match_cmd(shell_state *shell, char *cmd, char arguments[MAX_ARGS][MAX_ARG_L
     }
     else if (strcasecmp(cmd, "help") == 0)
     {
-        // TODO
+        help();
     }
     else if (strcasecmp(cmd, "lr") == 0)
     { // Handle list routers
@@ -169,8 +169,23 @@ void handle_input(shell_state *shell)
     }
 }
 
+void print_welcome() {
+    printf("________  ___  ________  _______           ________  ________  ___  ___  _________  _______\n");
+    printf("\\   __  \\|\\  \\|\\   __  \\|\\  ___ \\         |\\   __  \\|\\   __  \\|\\  \\|\\  \\|\\___   ___\\\\  ___ \\   \n");  
+    printf("\\ \\  \\|\\  \\ \\  \\ \\  \\|\\  \\ \\   __/|        \\ \\  \\|\\  \\ \\  \\|\\  \\ \\  \\\\\\  \\|___ \\  \\_\\ \\   __/|    \n");
+    printf(" \\ \\   ____\\ \\  \\ \\   ____\\ \\  \\_|/__       \\ \\   _  _\\ \\  \\\\\\  \\ \\  \\\\\\  \\   \\ \\  \\ \\ \\  \\_|/__  \n");
+    printf("  \\ \\  \\___|\\ \\  \\ \\  \\___|\\ \\  \\_|\\ \\       \\ \\  \\\\  \\\\ \\  \\\\\\  \\ \\  \\\\\\  \\   \\ \\  \\ \\ \\  \\_|\\ \\ \n");
+    printf("   \\ \\__\\    \\ \\__\\ \\__\\    \\ \\_______\\       \\ \\__\\\\ _\\\\ \\_______\\ \\_______\\   \\ \\__\\ \\ \\_______\\\n");
+    printf("    \\|__|     \\|__|\\|__|     \\|_______|        \\|__|\\|__|\\|_______|\\|_______|    \\|__|  \\|_______|\n");
+
+    printf("--------------------------------------------V0.0.1 2022--------------------------------------------\n");
+    printf("author kalin kochnev \n");
+    printf("Enter `help` to see a list of available commands\n");
+}
+
 int main(int argc, char **argv)
 {
+    print_welcome();
     shell_state shell;
     shell.n_exchanges = 0; // program starts with 0 exchanges
     shell.sim_active = 0;  // simulation is not active at start
