@@ -54,12 +54,7 @@ void match_cmd(shell_state *shell, char *cmd, char arguments[MAX_ARGS][MAX_ARG_L
     }
     else if (strcasecmp(cmd, "update") == 0)
     { // Handle update of weights of router
-        printf("Handled update!\n");
-        if (shell->sim_active == 0) {
-            update_weights_no_sim(shell, arguments, n_args);
-        } else {
-            // TODO
-        }
+        update_weights(shell, arguments, n_args);
     }
     else if (strcasecmp(cmd, "display") == 0)
     { // Display distance vector of router
@@ -159,11 +154,8 @@ int main(int argc, char **argv)
     int seed = 3100;
     srand(seed);
 
-    for (int r = 0; r < N_NEIGHBORS; r++)
-    {
-        shell.routers[r].id = r;
-        init_weights(&shell.routers[r]);
-    }
+    init_routers(shell.routers);
+
 
     handle_input(&shell);
 }

@@ -85,7 +85,7 @@ void list_weights_cmd(shell_state *shell, char arguments[MAX_ARGS][MAX_ARG_LEN],
     }
 }
 
-void update_weights_no_sim(shell_state *shell, char arguments[MAX_ARGS][MAX_ARG_LEN], int n_args)
+void update_weights(shell_state *shell, char arguments[MAX_ARGS][MAX_ARG_LEN], int n_args)
 {
     if (n_args != N_NEIGHBORS + 1)
     {
@@ -96,19 +96,41 @@ void update_weights_no_sim(shell_state *shell, char arguments[MAX_ARGS][MAX_ARG_
 
     router_t *r = NULL;
     if (get_router(shell, &r, arguments[0]) > 0)
-    {
+    {   
+        // Parse the weights from the arg string
+        int new_weights[MAX_ARGS];
+        for (int i = 0; i < MAX_ARGS; i++) {
+            new_weights[i] = 0;
+        }
+
         for (int arg = 1; arg < n_args; arg++)
         {
             // Attempt to parse each weight
-            int weight;
-            if (str2int(&weight, arguments[arg], 10) == STR2INT_SUCCESS)
+            int input_weight;
+            if (str2int(&input_weight, arguments[arg], 10) == STR2INT_SUCCESS)
             {
-                r->cost[r->id][arg - 1] = weight;
+                new_weights[arg - 1] = input_weight;
+                // printf("got weight int %d\n", input_weight);
             }
             else
             {
                 printf("Could not parse edge weight. Did you input an integer?\n");
+                break;
             }
+        }
+        printf("\n");
+
+
+        // Copy over the parsed weights
+        if (shell->sim_active == 1) {
+            main2r_msg msg = new_main2r(UPDATE);
+            memcpy(&msg.args, new_weights, sizeof(new_weights));
+
+            // We send the entire MAX_ARGS length array since the other side only takes what it needs
+            write(shell->routers_writefd[r->id], &msg, sizeof(msg));
+        } else {
+            // We take a subset of the arguments
+            memcpy(&r->cost[r->id], new_weights, sizeof(int) * N_NEIGHBORS);
         }
     }
 }

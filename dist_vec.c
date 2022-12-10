@@ -42,6 +42,7 @@ int send_data(router_t *from_r, int to_id, const void *buf, size_t bytes)
 
 void notify_neighbors(router_t *r)
 {
+    // printf("notified neighbors\n");
     // notify all router neighbors
     for (int n = 0; n < N_NEIGHBORS; n++)
     {
@@ -51,7 +52,7 @@ void notify_neighbors(router_t *r)
             msg.sender_id = r->id;
             // snprintf(msg.info, MAX_INFO_LEN, "sent from %d", r->id);
 
-            // Only send r's cost to its neighbors, not whole vector
+            // Only send router's cost to its neighbors, not whole vector
             int *r_neighbor_costs = r->cost[r->id];
             memcpy(msg.neighbor_costs, r_neighbor_costs, sizeof(int) * N_NEIGHBORS);
 
@@ -61,39 +62,65 @@ void notify_neighbors(router_t *r)
     }
 }
 
+// This function calculates the new minimum distance vectors for a router
+// Need to repeat this for every router to find the minimum 
+int distance_vector(int router_id, int cost[N_NEIGHBORS][N_NEIGHBORS]) {
+    int updated = 0;
+    for (int end_node = 0; end_node < N_NEIGHBORS; end_node++)
+    {
+        if (router_id == end_node) continue; // we don't include same start/stop node since that is always 0
+        
+        int min_cost = MAX_WEIGHT;
+        for (int inter = 0; inter < N_NEIGHBORS; inter++)
+        {
+            // if (router_id == inter) continue; // don't include x->x because also gives 0
+
+            // If by going through an intermediate node is cheaper, update the cost
+            if (cost[router_id][inter] + cost[inter][end_node] < min_cost) {
+                min_cost = cost[router_id][inter] + cost[inter][end_node];
+            }
+        }
+
+        // Update the cost vector with the new shortest path
+        if (min_cost != cost[router_id][end_node]) {
+            updated = 1;
+        }
+        cost[router_id][end_node] = min_cost;
+
+    }
+
+    return updated;
+}
 // Apply Belman-Ford to recompute the best estimate for the least cost path
 // Returns 1 if an update was made
-int recompute_est(router_t *r, r2r_msg *new_est)
-{
-    // Update the cost matrix with the new cost from the neighbor
-    memcpy(r->cost[new_est->sender_id], new_est->neighbor_costs, sizeof(new_est->neighbor_costs));
 
+//---------------------- NOTE TO WEI WEI---------------------------
+// It turns out I didn't understand the algorithm because I don't know how to
+// incorporate the vector update into the calculations
+// I tried following a youtube tutorial /explanation and I did not understand how
+// they got the #s they did. How did the least cost path know to converge if the belman ford 
+// had no relation to 
+// see video https://www.youtube.com/watch?v=_lAJyA70Z-o
+void recompute_est(router_t *r)
+{
     // Compute the distance vector Dx(y) = min { C(x, v) + Dv(y)} for every neighbor (y) for a router (x).
     // C(x, v) represents cost from x to intermediary node v
     // Find the minimum cost and update the distance vector with the new weight
 
     // Start node is assumed to be current router
-    int updated = 0;
-    for (int end_node = 0; end_node < N_NEIGHBORS; end_node++)
-    {
-        int min_end_cost = r->cost[r->id][end_node];
+    // memcpy(r->cost, r->distances, sizeof(r->distances)); // make the least cost be the same as the distance
 
-        for (int n = 0; n < N_NEIGHBORS; n++)
-        {
-            int cost_rn = r->cost[r->id][n];          // cost from r to neighbor
-            int cost_n_to_end = r->cost[n][end_node]; // cost from neighbor to
-
-            if (cost_rn + cost_n_to_end < min_end_cost)
-            {
-                min_end_cost = cost_rn + cost_n_to_end;
-                updated = 1;
-            }
+    // for (int router = 0; router < N_NEIGHBORS; router++) {
+    // This means we updated our routers least cost path so we need to notify all the other rouers
+    for (int i = 0; i < N_NEIGHBORS; i++) {
+        if (distance_vector(i, r->cost) == 1) {
+            printf("updated!\n");
+            notify_neighbors(r);
         }
-
-        // Update the cost vector with the new shortest path
-        r->cost[r->id][end_node] = min_end_cost;
     }
-    return updated;
+    
+    // }
+    
 }
 
 void process_user_command(router_t *r)
@@ -114,6 +141,10 @@ void process_user_command(router_t *r)
             break;
 
         case UPDATE:
+            memcpy(r->cost[r->id], msg.args, sizeof(int) * N_NEIGHBORS);
+            recompute_est(r);
+            printf("Updated least cost!\n");
+            notify_neighbors(r);
             break;
 
         case LIST_WEIGHTS:
@@ -148,10 +179,14 @@ void router_main(router_t *r)
 
         if (fd_ready(r->r_readfd) == 1)
         {
+            printf("got signal!\n");
             if (read(r->r_readfd, &neighbor_msg, sizeof(neighbor_msg)) < 0) {
                 printf("Error in reading from routers\n");
                 exit(0);
             }
+            // Update the distance matrix with the new weight from the neighbor
+            memcpy(r->cost[neighbor_msg.sender_id], neighbor_msg.neighbor_costs, sizeof(neighbor_msg.neighbor_costs));
+            recompute_est(r);
         }
         else
         {
@@ -159,17 +194,9 @@ void router_main(router_t *r)
         }
 
         // Recompute the shortest path and notify neighbors of changes if any were made
-        if (recompute_est(r, &neighbor_msg) == 1)
-        { // And update was made
-            printf("id: %d update made!\n", r->id);
-            notify_neighbors(r);
-        }
-        else
-        {
-            // notify neighbors every 0.25 seconds
-            usleep(10000);
-            notify_neighbors(r);
-        }
+
+        // notify neighbors every 0.25 seconds
+        
     }
     printf("done!\n");
     return;
